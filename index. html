@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Barcode Scanner + Item Storage</title>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  padding: 15px;
+  margin: 0;
+  background: #f2f4f7;
+}
+
+h2 {
+  margin-bottom: 15px;
+}
+
+#reader {
+  width: 100%;
+  max-width: 500px;
+  margin: auto;
+  background: white;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+input {
+  width: 100%;
+  max-width: 500px;
+  padding: 13px;
+  margin: 8px auto;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 16px;
+  display: block;
+}
+
+button {
+  padding: 12px 18px;
+  margin: 6px;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+#flashBtn {
+  background: #222;
+  color: white;
+}
+
+#saveBtn {
+  background: #16a34a;
+  color: white;
+}
+
+#verifyBtn {
+  background: #2563eb;
+  color: white;
+}
+
+#clearBtn {
+  background: #dc2626;
+  color: white;
+}
+
+.item {
+  background: white;
+  margin: 10px auto;
+  padding: 14px;
+  max-width: 500px;
+  border-radius: 10px;
+  text-align: left;
+  box-shadow: 0 2px 7px rgba(0,0,0,0.08);
+}
+
+.item-name {
+  font-size: 18px;
+  font-weight: bold;
+  color: #111827;
+}
+
+.barcode {
+  margin-top: 6px;
+  color: #15803d;
+  word-break: break-all;
+}
+
+.price {
+  margin-top: 6px;
+  color: #2563eb;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.date {
+  margin-top: 5px;
+  color: #666;
+  font-size: 13px;
+}
+
+.deleteBtn {
+  background: #ef4444;
+  color: white;
+  margin-top: 10px;
+}
+
+.editBtn {
+  background: #f59e0b;
+  color: white;
+}
+
+#result {
+  font-size: 20px;
+  color: green;
+  word-break: break-all;
+}
+
+#verifyResult {
+  max-width: 500px;
+  margin: 15px auto;
+  padding: 15px;
+  border-radius: 10px;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.verify-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.verify-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+#status {
+  color: #666;
+  font-size: 14px;
+}
+
+#itemsList {
+  margin-top: 20px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>📷 Barcode Scanner</h2>
+
+<div id="reader"></div>
+
+<button id="flashBtn" onclick="toggleFlash()">
+🔦 Flashlight OFF
+</button>
+
+<p>
+Result:
+<strong id="result">Wala pa</strong>
+</p>
+
+<input
+type="text"
+id="itemName"
+placeholder="Enter Item Name"
+>
+
+<input
+type="number"
+id="itemPrice"
+placeholder="Enter Price"
+step="0.01"
+min="0"
+>
+
+<button id="saveBtn" onclick="saveItem()">
+💾 Save Item
+</button>
+
+<button id="verifyBtn" onclick="verifyItem()">
+🔍 Verify Item
+</button>
+
+<button id="clearBtn" onclick="clearAll()">
+🗑️ Clear All
+</button>
+
+<p id="status">
+📦 Ready
+</p>
+
+<div id="verifyResult"></div>
+
+<h3>📋 Saved Items</h3>
+
+<div id="itemsList"></div>
+
+
+<script>
+
+/* =========================
+   ARRAY
+========================= */
+
+let items = [];
+
+
+/* =========================
+   LOAD LOCALSTORAGE
+========================= */
+
+function loadItems() {
+
+  const saved =
+    localStorage.getItem("barcodeItems");
+
+  if (saved) {
+
+    try {
+
+      items = JSON.parse(saved);
+
+    } catch (error) {
+
+      items = [];
+
+    }
+
+  }
+
+  displayItems();
+}
+
+
+/* =========================
+   SAVE LOCALSTORAGE
+========================= */
+
+function saveToLocalStorage() {
+
+  localStorage.setItem(
+    "barcodeItems",
+    JSON.stringify(items)
+  );
+
+}
+
+
+/* =========================
+   SCANNER
+========================= */
+
+let scanner;
+let cameraTrack = null;
+let flashlightOn = false;
+
+
+/* =========================
+   SCAN SUCCESS
+========================= */
+
+function onScanSuccess(decodedText, decodedResult) {
+
+  document.getElementById("result").textContent =
+    decodedText;
+
+  console.log("Barcode:", decodedText);
+
+  document.getElementById("status").textContent =
+    "✅ Barcode scanned!";
+
+  /*
+    AUTO VERIFY
+    Kapag nag-scan, automatic
+    iche-check kung existing.
+  */
+
+  verifyItem();
+
+}
+
+
+/* =========================
+   SCAN FAILURE
+========================= */
+
+function onScanFailure(error) {
+
+  // Normal lang habang naghahanap ng barcode
+
+}
+
+
+/* =========================
+   START SCANNER
+========================= */
+
+scanner = new Html5QrcodeScanner(
+  "reader",
+  {
+    fps: 10,
+
+    qrbox: {
+      width: 250,
+      height: 150
+    }
+  },
+  false
+);
+
+scanner.render(
+  onScanSuccess,
+  onScanFailure
+);
+
+
+/* =========================
+   FLASHLIGHT
+========================= */
+
+async function toggleFlash() {
+
+  try {
+
+    const video =
+      document.querySelector("#reader video");
+
+    if (!video) {
+
+      alert(
+        "Hintayin munang mag-start ang camera."
+      );
+
+      return;
+    }
+
+    cameraTrack =
+      video.srcObject?.getVideoTracks()[0];
+
+    if (!cameraTrack) {
+
+      alert(
+        "Hindi makita ang camera."
+      );
+
+      return;
+    }
+
+    const capabilities =
+      cameraTrack.getCapabilities();
+
+    if (!capabilities.torch) {
+
+      alert(
+        "Hindi supported ng browser o camera ang flashlight control."
+      );
+
+      return;
+    }
+
+    flashlightOn =
+      !flashlightOn;
+
+    await cameraTrack.applyConstraints({
+
+      advanced: [
+        {
+          torch: flashlightOn
+        }
+      ]
+
+    });
+
+    document.getElementById(
+      "flashBtn"
+    ).textContent =
+
+      flashlightOn
+        ? "🔦 Flashlight ON"
+        : "🔦 Flashlight OFF";
+
+  }
+
+  catch (error) {
+
+    console.error(error);
+
+    alert(
+      "Hindi ma-control ang flashlight sa device na ito."
+    );
+
+  }
+
+}
+
+
+/* =========================
+   SAVE ITEM
+========================= */
+
+function saveItem() {
+
+  const itemName =
+    document.getElementById(
+      "itemName"
+    ).value.trim();
+
+  const price =
+    parseFloat(
+      document.getElementById(
+        "itemPrice"
+      ).value
+    );
+
+  const barcode =
+    document.getElementById(
+      "result"
+    ).textContent.trim();
+
+
+  /* CHECK NAME */
+
+  if (!itemName) {
+
+    alert(
+      "Maglagay muna ng Item Name."
+    );
+
+    return;
+  }
+
+
+  /* CHECK PRICE */
+
+  if (
+    isNaN(price) ||
+    price < 0
+  ) {
+
+    alert(
+      "Maglagay ng valid na price."
+    );
+
+    return;
+  }
+
+
+  /* CHECK BARCODE */
+
+  if (
+    !barcode ||
+    barcode === "Wala pa"
+  ) {
+
+    alert(
+      "Mag-scan muna ng barcode."
+    );
+
+    return;
+  }
+
+
+  /*
+    CHECK DUPLICATE BARCODE
+  */
+
+  const existing =
+    items.find(function(item) {
+
+      return item.barcode === barcode;
+
+    });
+
+
+  if (existing) {
+
+    alert(
+      "Existing na ang barcode na ito.\n\n" +
+      "Item: " + existing.itemName
+    );
+
+    return;
+  }
+
+
+  /* CREATE OBJECT */
+
+  const newItem = {
+
+    id: Date.now(),
+
+    itemName: itemName,
+
+    barcode: barcode,
+
+    price: price,
+
+    date: new Date().toLocaleString()
+
+  };
+
+
+  /* ADD ARRAY */
+
+  items.push(newItem);
+
+
+  /* SAVE */
+
+  saveToLocalStorage();
+
+
+  /* DISPLAY */
+
+  displayItems();
+
+
+  /* CLEAR */
+
+  document.getElementById(
+    "itemName"
+  ).value = "";
+
+  document.getElementById(
+    "itemPrice"
+  ).value = "";
+
+
+  document.getElementById(
+    "status"
+  ).textContent =
+    "💾 Item saved successfully!";
+
+}
+
+
+/* =========================
+   VERIFY ITEM
+========================= */
+
+function verifyItem() {
+
+  const barcode =
+    document.getElementById(
+      "result"
+    ).textContent.trim();
+
+
+  if (
+    !barcode ||
+    barcode === "Wala pa"
+  ) {
+
+    showVerifyResult(
+      "❌ Mag-scan muna ng barcode.",
+      false
+    );
+
+    return;
+  }
+
+
+  /*
+    SEARCH BARCODE
+  */
+
+  const found =
+    items.find(function(item) {
+
+      return item.barcode === barcode;
+
+    });
+
+
+  if (found) {
+
+    showVerifyResult(
+
+      "✅ ITEM VERIFIED<br><br>" +
+
+      "📦 Item: " +
+      escapeHTML(found.itemName) +
+
+      "<br>" +
+
+      "🏷️ Barcode: " +
+      escapeHTML(found.barcode) +
+
+      "<br>" +
+
+      "💰 Price: ₱" +
+      Number(found.price).toFixed(2),
+
+      true
+
+    );
+
+    document.getElementById(
+      "status"
+    ).textContent =
+      "✅ Item found!";
+
+  }
+
+  else {
+
+    showVerifyResult(
+
+      "❌ ITEM NOT FOUND<br><br>" +
+
+      "Barcode: " +
+      escapeHTML(barcode),
+
+      false
+
+    );
+
+    document.getElementById(
+      "status"
+    ).textContent =
+      "❌ Item not found.";
+
+  }
+
+}
+
+
+/* =========================
+   VERIFY RESULT
+========================= */
+
+function showVerifyResult(message, success) {
+
+  const box =
+    document.getElementById(
+      "verifyResult"
+    );
+
+  box.innerHTML = message;
+
+  box.className =
+    success
+      ? "verify-success"
+      : "verify-error";
+
+}
+
+
+/* =========================
+   DISPLAY ITEMS
+========================= */
+
+function displayItems() {
+
+  const list =
+    document.getElementById(
+      "itemsList"
+    );
+
+  list.innerHTML = "";
+
+
+  if (items.length === 0) {
+
+    list.innerHTML =
+      "<p>Wala pang saved items.</p>";
+
+    return;
+  }
+
+
+  items.forEach(function(item) {
+
+    const div =
+      document.createElement("div");
+
+    div.className = "item";
+
+
+    div.innerHTML = `
+
+      <div class="item-name">
+        📦 ${escapeHTML(item.itemName)}
+      </div>
+
+      <div class="barcode">
+        🏷️ ${escapeHTML(item.barcode)}
+      </div>
+
+      <div class="price">
+        💰 ₱${Number(item.price || 0).toFixed(2)}
+      </div>
+
+      <div class="date">
+        📅 ${escapeHTML(item.date)}
+      </div>
+
+      <button
+        class="editBtn"
+        onclick="editPrice(${item.id})"
+      >
+        ✏️ Edit Price
+      </button>
+
+      <button
+        class="deleteBtn"
+        onclick="deleteItem(${item.id})"
+      >
+        🗑️ Delete
+      </button>
+
+    `;
+
+
+    list.appendChild(div);
+
+  });
+
+}
+
+
+/* =========================
+   EDIT PRICE
+========================= */
+
+function editPrice(id) {
+
+  const item =
+    items.find(function(item) {
+
+      return item.id === id;
+
+    });
+
+
+  if (!item) {
+
+    alert("Item not found.");
+
+    return;
+  }
+
+
+  const newPrice =
+    prompt(
+      "Enter new price:",
+      item.price
+    );
+
+
+  if (newPrice === null) {
+    return;
+  }
+
+
+  const price =
+    parseFloat(newPrice);
+
+
+  if (
+    isNaN(price) ||
+    price < 0
+  ) {
+
+    alert(
+      "Invalid price."
+    );
+
+    return;
+  }
+
+
+  item.price = price;
+
+
+  saveToLocalStorage();
+
+  displayItems();
+
+
+  document.getElementById(
+    "status"
+  ).textContent =
+    "💰 Price updated!";
+
+}
+
+
+/* =========================
+   DELETE ITEM
+========================= */
+
+function deleteItem(id) {
+
+  const confirmDelete =
+    confirm(
+      "Delete this item?"
+    );
+
+
+  if (!confirmDelete) {
+    return;
+  }
+
+
+  items =
+    items.filter(function(item) {
+
+      return item.id !== id;
+
+    });
+
+
+  saveToLocalStorage();
+
+  displayItems();
+
+
+  document.getElementById(
+    "status"
+  ).textContent =
+    "🗑️ Item deleted.";
+
+}
+
+
+/* =========================
+   CLEAR ALL
+========================= */
+
+function clearAll() {
+
+  if (items.length === 0) {
+
+    alert(
+      "Wala pang items."
+    );
+
+    return;
+  }
+
+
+  const confirmClear =
+    confirm(
+      "Delete ALL saved items?"
+    );
+
+
+  if (!confirmClear) {
+    return;
+  }
+
+
+  items = [];
+
+
+  localStorage.removeItem(
+    "barcodeItems"
+  );
+
+
+  displayItems();
+
+
+  document.getElementById(
+    "verifyResult"
+  ).innerHTML = "";
+
+
+  document.getElementById(
+    "status"
+  ).textContent =
+    "🗑️ All items cleared.";
+
+}
+
+
+/* =========================
+   HTML SECURITY
+========================= */
+
+function escapeHTML(text) {
+
+  const div =
+    document.createElement("div");
+
+  div.textContent = text;
+
+  return div.innerHTML;
+
+}
+
+
+/* =========================
+   LOAD DATA
+========================= */
+
+loadItems();
+
+</script>
+
+</body>
+</html>
